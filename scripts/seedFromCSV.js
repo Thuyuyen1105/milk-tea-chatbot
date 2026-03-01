@@ -9,7 +9,7 @@ async function seed() {
     const records = []
 
     fs.createReadStream('Menu.csv')
-        .pipe(parse({ columns: true, delimiter: '\t', trim: true }))
+        .pipe(parse({ columns: true, trim: true }))
         .on('data', (row) => records.push(row))
         .on('end', async () => {
             for (const row of records) {
