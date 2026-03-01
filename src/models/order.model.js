@@ -5,7 +5,7 @@ const Order = sequelize.define('Order', {
     telegramUserId: DataTypes.STRING,
     status: {
         type: DataTypes.STRING,
-        defaultValue: 'PENDING',
+        defaultValue: 'CART',
     },
     totalPrice: {
         type: DataTypes.INTEGER,
