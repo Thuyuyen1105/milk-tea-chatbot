@@ -18,7 +18,8 @@ Số lượng: ${item.quantity}`,
                 Markup.button.callback('➕', 'QTY_PLUS')
             ],
             [
-                Markup.button.callback('Thêm vào giỏ', 'ADD_TO_CART')
+                // Markup.button.callback('Thêm vào giỏ', 'ADD_TO_CART')
+                Markup.button.callback('Tiếp tục chọn topping', 'CHOOSE_TOPPING')
             ],
             [
                 Markup.button.callback('❌ Hủy', 'VIEW_MENU1')

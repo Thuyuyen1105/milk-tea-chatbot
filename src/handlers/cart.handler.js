@@ -1,10 +1,12 @@
+
 const { Markup } = require('telegraf')
-const { Product, OrderItem, Order } = require('../models')
+const { Product, OrderItem, Order, OrderItemTopping } = require('../models')
 const { showMenu } = require('./menu.handler')
 const { safeEdit } = require('../helpers/editMessage')
-const {formatMoney}= require('../helpers/formatMoney')
-
+const { formatMoney } = require('../helpers/formatMoney')
+const { feature } = require (`../handlers/guide.handler`)
 async function showCart(ctx) {
+
     const order = await Order.findOne({
         where: {
             telegramUserId: ctx.from.id.toString(),
@@ -12,46 +14,75 @@ async function showCart(ctx) {
         },
         include: {
             model: OrderItem,
-            include: Product,
+            include: [
+                Product,
+                {
+                    model: OrderItemTopping,
+                    include: Product,
+                    required: false
+                }
+            ],
         },
     })
 
     if (!order || order.OrderItems.length === 0) {
         await showMenu(ctx)
-        return safeEdit(ctx,'🛒 Giỏ hàng đang trống')
+        return safeEdit(ctx, '🛒 Giỏ hàng đang trống')
     }
 
     let text = '🛒 GIỎ HÀNG\n\n'
     let total = 0
-
     const buttons = []
 
-    order.OrderItems.forEach((item, index) => {
-        const price = item.basePrice * item.quantity
-        total += price
+    for (let i = 0; i < order.OrderItems.length; i++) {
 
-        text += `${index + 1}. ${item.Product.name} (${item.size}) x${item.quantity} - ${formatMoney(price)}đ\n`
+        const item = order.OrderItems[i]
 
-        // 👉 Nút xoá từng sản phẩm
+        // ===== BASE =====
+        let itemTotal = item.basePrice * item.quantity
+
+        text += `${i + 1}. ${item.Product.name} (${item.size}) x${item.quantity}`
+
+        text += ` - ${formatMoney(item.basePrice * item.quantity)}đ\n`
+
+        // ===== TOPPING =====
+        if (item.OrderItemToppings?.length) {
+
+            for (const topping of item.OrderItemToppings) {
+
+                const toppingTotal = topping.price * item.quantity
+
+                itemTotal += toppingTotal
+
+                text += `   + ${topping.Product.name} x${item.quantity} - ${formatMoney(toppingTotal)}đ\n`
+            }
+        }
+
+        text += `   ➜ Thành tiền: ${formatMoney(itemTotal)}đ\n\n`
+
+        total += itemTotal
+
         buttons.push([
             Markup.button.callback(
-                `❌ Xóa ${index + 1}`,
+                `❌ Xóa ${i + 1}`,
                 `REMOVE_ITEM_${item.id}`
             )
         ])
-    })
+    }
 
-    text += `\nTổng: ${formatMoney(total)}đ`
+    text += `💰 TỔNG: ${formatMoney(total)}đ`
 
-    // Nút cuối
     buttons.push(
-        [Markup.button.callback('💳 Thanh toán', 'CONFIRM_ORDER')],
+        [Markup.button.callback('Hoàn tất đặt món', 'CONFIRM_ORDER')],
+        [Markup.button.callback('Tiếp tục mua', 'VIEW_MENU1')],
         [Markup.button.callback('🗑 Xóa toàn bộ', 'CLEAR_CART')],
-        [Markup.button.callback('🛍 Tiếp tục mua', 'VIEW_MENU')]
+
     )
 
-    await safeEdit(ctx,text, Markup.inlineKeyboard(buttons))
+    await safeEdit(ctx, text, Markup.inlineKeyboard(buttons))
 }
+
+module.exports = { showCart }
 async function clearAll(ctx) {
     const order = await Order.findOne({
         where: {
@@ -69,6 +100,7 @@ async function clearAll(ctx) {
     })
 
     ctx.reply('Giỏ hàng đã được xóa')
+    return feature(ctx)
 }
 module.exports= {
     showCart,

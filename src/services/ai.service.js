@@ -45,19 +45,28 @@ function detectIntent(text) {
 /* ================================
    AI PARSE ORDER (TRẢ productId)
 ================================ */
-
 async function parseOrderAI(text, products) {
 
-    const productList = products
+    const drinks = products
+        .filter(p => !p.isTopping)
+        .map(p => `${p.id} - ${p.name}`)
+        .join("\n")
+
+    const toppings = products
+        .filter(p => p.isTopping)
         .map(p => `${p.id} - ${p.name}`)
         .join("\n")
 
     const prompt = `
 Bạn là AI đặt trà sữa.
 
-Chỉ được chọn sản phẩm từ danh sách sau:
+CHỈ được chọn sản phẩm từ danh sách sau.
 
-${productList}
+--- DANH SÁCH ĐỒ UỐNG ---
+${drinks}
+
+--- DANH SÁCH TOPPING ---
+${toppings}
 
 Phân tích tin nhắn:
 "${text}"
@@ -73,13 +82,16 @@ Trả JSON duy nhất dạng:
       "productId": số nguyên,
       "size": "M hoặc L",
       "quantity": số nguyên,
-      "note": ""
+      "note": "",
+      "toppings": [id_topping, id_topping]
     }
   ]
 }
 
-Không được tự tạo productId.
-Chỉ trả JSON.
+- toppings là mảng id số nguyên
+- Nếu không có topping → trả mảng rỗng []
+- Không được tự tạo productId
+- Chỉ trả JSON
 `
 
     try {
@@ -99,7 +111,6 @@ Chỉ trả JSON.
         return null
     }
 }
-
 /* ================================
    RULE-BASED FALLBACK (MIỄN PHÍ)
 ================================ */
