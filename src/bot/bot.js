@@ -2,7 +2,7 @@ require('dotenv').config()
 const { Telegraf, Markup, session } = require('telegraf')
 
 
-const { Product, OrderItem } = require('../models')
+const { Product, OrderItem, Order } = require('../models')
 const { getOrCreateOrder } = require('../services/order.service')
 const { showMenu } = require('../handlers/menu.handler')
 const { showCart, clearAll } = require('../handlers/cart.handler')
@@ -291,20 +291,158 @@ bot.on('text', async ctx => {
 bot.action('FINAL_CHECKOUT', async ctx => {
     await ctx.answerCbQuery()
 
+    const order = await getOrCreateOrder(ctx.from.id.toString())
+
+    if (!order || order.status !== 'CART') {
+        return ctx.reply('Không tìm thấy đơn hàng.')
+    }
+
     const total = await checkout(ctx)
     if (!total) return
 
+    // ===== LẤY CHI TIẾT ĐƠN =====
+    const fullOrder = await Order.findOne({
+        where: { id: order.id },
+        include: {
+            model: OrderItem,
+            include: Product
+        }
+    })
+
+    const orderedAt = new Date()
+    fullOrder.status = 'CONFIRMED'
+    fullOrder.orderedAt = orderedAt
+    await fullOrder.save()
+
+    // ===== FORMAT NỘI DUNG =====
+    let message = `ĐƠN MỚI\n\n`
+    message += `Khách: ${ctx.from.first_name} ${ctx.from.last_name || ''}\n`
+    message += `Telegram ID: ${ctx.from.id}\n`
+    message += `Thời gian: ${orderedAt.toLocaleString('vi-VN')}\n\n`
+
+    message += `Chi tiết:\n`
+
+    fullOrder.OrderItems.forEach((item, index) => {
+        const price = item.basePrice * item.quantity
+        message += `${index + 1}. ${item.Product.name} (${item.size}) x${item.quantity} - ${price.toLocaleString('vi-VN')}đ\n`
+    })
+
+    message += `\n💰 Tổng tiền: ${total.toLocaleString('vi-VN')}đ\n`
+
+    if (fullOrder.note) {
+        message += `\n📝 Ghi chú:\n${fullOrder.note}\n`
+    }
+
+    // ===== GỬI CHO MẸ BẠN =====
     await bot.telegram.sendMessage(
         process.env.OWNER_TELEGRAM_ID,
-        `Đơn mới từ ${ctx.from.first_name}\n💰 Tổng: ${total}đ`
+        message,
+        Markup.inlineKeyboard([
+            [Markup.button.callback('👩‍🍳 Bắt đầu pha', `START_${order.id}`)],
+            [Markup.button.callback('❌ Hủy đơn', `CANCEL_${order.id}`)]
+        ])
+
     )
 
     await safeEdit(ctx,
-        'Đặt hàng thành công!\nQuán đang chuẩn bị cho bạn.'
+        '✅ Đặt hàng thành công!\nQuán đang chuẩn bị cho bạn.'
     )
 })
 
+bot.action(/START_(\d+)/, async (ctx) => {
+    const orderId = ctx.match[1]
 
+    const order = await Order.findByPk(orderId)
+    if (!order) return
+
+    order.status = 'PREPARING'
+    await order.save()
+
+    await ctx.answerCbQuery('Đã chuyển sang đang pha')
+
+    await ctx.editMessageReplyMarkup({
+        inline_keyboard: [
+            [{ text: '✅ Đã pha xong', callback_data: `READY_${order.id}` }]
+        ]
+    })
+})
+bot.action(/READY_(\d+)/, async (ctx) => {
+    const orderId = ctx.match[1]
+    const order = await Order.findByPk(orderId)
+
+    order.status = 'READY'
+    await order.save()
+
+    await ctx.answerCbQuery('Đã sẵn sàng')
+
+    // Gửi cho khách
+    await bot.telegram.sendMessage(
+        order.telegramUserId,
+        '🧋 Đơn của bạn đã sẵn sàng. Mời bạn ghé quán lấy nhé!'
+    )
+    await ctx.editMessageReplyMarkup({
+        inline_keyboard: [
+            [{ text: '📦 Đã nhận', callback_data: `DONE_${order.id}` }]
+
+        ]
+    })
+})
+bot.action(/DONE_(\d+)/, async (ctx) => {
+    const orderId = ctx.match[1]
+    const order = await Order.findByPk(orderId, {
+        include: {
+            model: OrderItem,
+            include: Product
+        }
+    })
+
+    if (!order) return
+
+    const completedAt = new Date()
+
+
+    order.status = 'COMPLETED'
+    await order.save()
+
+    await ctx.answerCbQuery('Hoàn tất đơn')
+    let message = `✅ ĐƠN ĐÃ HOÀN THÀNH\n\n`
+    message += `Khách: ${ctx.from.first_name} ${ctx.from.last_name || ''}\n`
+    message += `Telegram ID: ${order.telegramUserId}\n`
+    message += `Thời gian đặt: ${order.createdAt.toLocaleString('vi-VN')}\n`
+    message += `Hoàn tất lúc: ${completedAt.toLocaleString('vi-VN')}\n\n`
+
+    message += `Chi tiết:\n`
+
+    order.OrderItems.forEach((item, index) => {
+        const price = item.basePrice * item.quantity
+        message += `${index + 1}. ${item.Product.name} (${item.size}) x${item.quantity} - ${price.toLocaleString('vi-VN')}đ\n`
+    })
+
+    message += `\n💰 Tổng tiền: ${order.totalPrice.toLocaleString('vi-VN')}đ\n`
+
+    if (order.note) {
+        message += `\n📝 Ghi chú:\n${order.note}\n`
+    }
+
+    message += `\n📦 Trạng thái: ĐÃ NHẬN`
+
+    // ===== ĐỔI TEXT & XÓA NÚT =====
+    await safeEdit(ctx, message)
+})
+bot.action(/CANCEL_(\d+)/, async (ctx) => {
+    const orderId = ctx.match[1]
+    const order = await Order.findByPk(orderId)
+
+    order.status = 'CANCELLED'
+    await order.save()
+
+    await bot.telegram.sendMessage(
+        order.telegramUserId,
+        '❌ Xin lỗi, hiện tại quán không thể thực hiện đơn này.'
+    )
+
+    await ctx.answerCbQuery('Đã hủy đơn')
+})
 
 
 module.exports = bot
