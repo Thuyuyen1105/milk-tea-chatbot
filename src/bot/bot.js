@@ -10,6 +10,7 @@ const { showOrders, checkout } = require('../handlers/order.handler')
 const { showQuantitySelector } = require('../handlers/quantity.handler')
 const { safeEdit } = require('../helpers/editMessage')
 const {formatMoney} = require('../helpers/formatMoney')
+const { detectIntent, parseOrder } = require("../services/ai.service")
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 bot.use(session())
@@ -134,7 +135,7 @@ bot.action(/SIZE_(\d+)_(M|L)/, async ctx => {
         productName: product.name,
         size,
         basePrice: price,
-        quantity: 1
+        quantity: 1,
     }
 
     await showQuantitySelector(ctx)
@@ -262,29 +263,100 @@ bot.action(/REMOVE_ITEM_(\d+)/, async (ctx) => {
 // =======================
 // NHẬN TEXT NOTE
 // =======================
-bot.on('text', async ctx => {
+bot.on("text", async (ctx) => {
 
-    if (!ctx.session.waitingOrderNote) return
+    const text = ctx.message.text
+    const intent = detectIntent(text)
 
-    const order = await getOrCreateOrder(ctx.from.id.toString())
-    const text = ctx.message.text.trim()
+    const products = await Product.findAll({
+        where: { available: true }
+    })
 
-    if (text.toUpperCase() !== 'KHONG') {
-        order.note = text
+    /* ====================
+       SHOW MENU
+    ==================== */
+    if (intent === "SHOW_MENU") {
+        // 1. Nhóm sản phẩm theo category
+        const groupedProducts = products.reduce((acc, product) => {
+            const cat = product.category || "Khác"; // Backup nếu category trống
+            if (!acc[cat]) {
+                acc[cat] = [];
+            }
+            acc[cat].push(product);
+            return acc;
+        }, {});
+
+        // 2. Xây dựng nội dung tin nhắn
+        let msg = "📋 **MENU CỦA QUÁN**\n\n";
+
+        for (const category in groupedProducts) {
+            msg += `─── **${category.toUpperCase()}** ───\n`; // Tiêu đề danh mục
+
+            groupedProducts[category].forEach(p => {
+                // Hiển thị tên kèm giá nếu cần (ví dụ lấy giá)
+                msg += `• ${p.name} (${formatMoney(p.priceM)}đ)-  (${formatMoney(p.priceL)}đ) \n`;
+            });
+
+            msg += "\n"; // Khoảng trống giữa các danh mục
+        }
+
+        return ctx.reply(msg, { parse_mode: "Markdown" });
     }
 
-    await order.save()
+    /* ====================
+       HELP
+    ==================== */
+    if (intent === "HELP") {
+        return ctx.reply(
+            "Bạn có thể nhập:\n" +
+            "• Cho chị 2 trà vải size L\n" +
+            "• Gửi menu\n"
+        )
+    }
 
-    ctx.session.waitingOrderNote = false
+    /* ====================
+       ORDER
+    ==================== */
+    if (intent === "ORDER") {
 
-    await ctx.reply(
-        'Đã ghi nhận ghi chú.\nBạn xác nhận đặt hàng?',
-        Markup.inlineKeyboard([
-            [Markup.button.callback('🚀 Xác nhận đặt hàng', 'FINAL_CHECKOUT')]
-        ])
-    )
+        const parsed = await parseOrder(text, products)
+
+        if (!parsed || !parsed.items || !parsed.items.length) {
+            return ctx.reply("Mình chưa hiểu đơn của bạn 😢")
+        }
+
+        // VALIDATE DB
+        for (const item of parsed.items) {
+            const product = products.find(p => p.id === item.productId)
+            if (!product) {
+                return ctx.reply("Có sản phẩm không hợp lệ.")
+            }
+        }
+
+        // CONFIRM
+        let confirmMsg = "🛒 Mình hiểu:\n\n"
+
+        parsed.items.forEach((item, i) => {
+            const product = products.find(p => p.id === item.productId)
+            confirmMsg += `${i + 1}. ${product.name} (${item.size}) x${item.quantity}\n`
+        })
+
+        confirmMsg += "\nXác nhận chứ?"
+
+        ctx.session.aiOrder = parsed.items
+
+        return ctx.reply(confirmMsg, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "✅ Đúng", callback_data: "AI_CONFIRM" }],
+                    [{ text: "❌ Sai", callback_data: "AI_CANCEL" }]
+                ]
+            }
+        })
+    }
+
+    return ctx.reply("Bạn cần gì ạ?")
 })
-
 // =======================
 // FINAL CHECKOUT
 // =======================
@@ -443,6 +515,40 @@ bot.action(/CANCEL_(\d+)/, async (ctx) => {
 
     await ctx.answerCbQuery('Đã hủy đơn')
 })
+bot.action("AI_CONFIRM", async (ctx) => {
 
+    const items = ctx.session.aiOrder
+    if (!items) return
 
+    const order = await getOrCreateOrder(ctx.from.id.toString())
+
+    for (const item of items) {
+
+        const product = await Product.findByPk(item.productId)
+
+        const price = item.size === "L"
+            ? product.priceL
+            : product.priceM
+
+        await OrderItem.create({
+            OrderId: order.id,
+            ProductId: product.id,
+            size: item.size,
+            quantity: item.quantity,
+            basePrice: price
+        })
+    }
+
+    ctx.session.aiOrder = null
+
+    await ctx.reply("Đã thêm vào giỏ hàng.")
+})
+bot.action("AI_CANCEL", async (ctx) => {
+
+    ctx.session.aiOrder = null
+
+    await ctx.answerCbQuery("Đã hủy")
+
+    await ctx.editMessageText("❌ Đã hủy thao tác đặt hàng.")
+})
 module.exports = bot
