@@ -7,7 +7,7 @@ const { getOrCreateOrder } = require('../services/order.service')
 const { showMenu } = require('../handlers/menu.handler')
 const { showCart, clearAll } = require('../handlers/cart.handler')
 const { showOrders, checkout } = require('../handlers/order.handler')
-
+const { safeEdit } = require('../helpers/editMessage')
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 bot.use(session())
@@ -69,10 +69,10 @@ bot.action(/CATEGORY_(.+)/, async ctx => {
     ])
 
     buttons.push([
-        Markup.button.callback('⬅️ Quay lại', 'VIEW_MENU')
+        Markup.button.callback('⬅️ Quay lại', 'VIEW_MENU1')
     ])
 
-    await ctx.editMessageText(
+    await safeEdit(ctx,
         `Danh mục: ${category}`,
         Markup.inlineKeyboard(buttons)
     )
@@ -106,7 +106,7 @@ bot.action(/PRODUCT_(\d+)/, async ctx => {
         ]
     ]
 
-    await ctx.editMessageText(
+    await safeEdit(ctx,
         `Chọn size cho ${product.name}`,
         Markup.inlineKeyboard(buttons)
     )
@@ -174,7 +174,7 @@ bot.action('ADD_TO_CART', async ctx => {
 
     ctx.session.tempItem = null
 
-    await ctx.editMessageText(
+    await safeEdit(ctx,
         `Đã thêm ${item.productName} (${item.size}) x${item.quantity} vào giỏ`
     )
 
@@ -182,7 +182,7 @@ bot.action('ADD_TO_CART', async ctx => {
         'Bạn muốn làm gì tiếp theo?',
         Markup.inlineKeyboard([
             [Markup.button.callback('🛒 Xem giỏ hàng', 'VIEW_CART')],
-            [Markup.button.callback('➕ Thêm món khác', 'VIEW_MENU')]
+            [Markup.button.callback('➕ Thêm món khác', 'VIEW_MENU1')]
         ])
     )
 })
@@ -191,9 +191,12 @@ bot.action('ADD_TO_CART', async ctx => {
 // =======================
 bot.action('VIEW_MENU', async ctx => {
     await ctx.answerCbQuery()
-    await showMenu(ctx)
+    await showMenu(ctx, true)
 })
-
+bot.action('VIEW_MENU1', async ctx => {
+    await ctx.answerCbQuery()
+    await showMenu(ctx, true)
+})
 // =======================
 // VIEW CART
 // =======================
@@ -243,6 +246,17 @@ Nếu không có, hãy gõ: KHONG`
     )
 })
 
+bot.action(/REMOVE_ITEM_(\d+)/, async (ctx) => {
+    ctx.answerCbQuery().catch(() => {})
+
+    const itemId = ctx.match[1]
+
+    await OrderItem.destroy({
+        where: { id: itemId }
+    })
+
+    await showCart(ctx)
+})
 // =======================
 // NHẬN TEXT NOTE
 // =======================
@@ -283,7 +297,7 @@ bot.action('FINAL_CHECKOUT', async ctx => {
         `Đơn mới từ ${ctx.from.first_name}\n💰 Tổng: ${total}đ`
     )
 
-    await ctx.editMessageText(
+    await safeEdit(ctx,
         'Đặt hàng thành công!\nQuán đang chuẩn bị cho bạn.'
     )
 })
@@ -291,7 +305,7 @@ bot.action('FINAL_CHECKOUT', async ctx => {
 async function showQuantitySelector(ctx) {
     const item = ctx.session.tempItem
 
-    await ctx.editMessageText(
+    await safeEdit(ctx,
         `🧋 ${item.productName}
 Size: ${item.size}
 
@@ -307,9 +321,11 @@ Số lượng: ${item.quantity}`,
                 Markup.button.callback('Thêm vào giỏ', 'ADD_TO_CART')
             ],
             [
-                Markup.button.callback('❌ Hủy', 'VIEW_MENU')
+                Markup.button.callback('❌ Hủy', 'VIEW_MENU1')
             ]
         ])
     )
 }
+
+
 module.exports = bot

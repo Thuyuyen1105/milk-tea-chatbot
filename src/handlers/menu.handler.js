@@ -1,5 +1,6 @@
 const { Markup } = require('telegraf')
 const { Product } = require('../models')
+const { safeEdit } = require('../helpers/editMessage')
 
 async function showMenu(ctx, isEdit = false) {
     const categories = await Product.findAll({
@@ -25,7 +26,7 @@ async function showMenu(ctx, isEdit = false) {
     const keyboard = Markup.inlineKeyboard(buttons)
 
     if (isEdit) {
-        return ctx.editMessageText('Chọn danh mục:', keyboard)
+        return safeEdit(ctx, 'Chọn danh mục:', keyboard)
     }
     return ctx.reply('Chọn danh mục:', keyboard)
 }
