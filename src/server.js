@@ -1,7 +1,11 @@
 require('dotenv').config()
 
+const express = require('express')
 const { sequelize } = require('./models')
 const bot = require('./bot/bot')
+
+const app = express()
+const PORT = process.env.PORT || 3000
 
 async function start() {
     try {
@@ -14,6 +18,14 @@ async function start() {
         console.error(error)
     }
 }
+
+app.get('/', (req, res) => {
+    res.send('Milk Tea Bot is running')
+})
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
+})
 
 start()
 
