@@ -7,7 +7,9 @@ const { getOrCreateOrder } = require('../services/order.service')
 const { showMenu } = require('../handlers/menu.handler')
 const { showCart, clearAll } = require('../handlers/cart.handler')
 const { showOrders, checkout } = require('../handlers/order.handler')
+const { showQuantitySelector } = require('../handlers/quantity.handler')
 const { safeEdit } = require('../helpers/editMessage')
+const {formatMoney} = require('../helpers/formatMoney')
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 bot.use(session())
@@ -63,7 +65,7 @@ bot.action(/CATEGORY_(.+)/, async ctx => {
 
     const buttons = products.map(p => [
         Markup.button.callback(
-            `${p.name} (${p.priceM}đ - ${p.priceL}đ)`,
+            `${p.name} (${formatMoney(p.priceM)}đ - ${formatMoney(p.priceL)}đ)`,
             `PRODUCT_${p.id}`
         )
     ])
@@ -90,11 +92,11 @@ bot.action(/PRODUCT_(\d+)/, async ctx => {
     const buttons = [
         [
             Markup.button.callback(
-                `Size M - ${product.priceM}đ`,
+                `Size M - ${formatMoney(product.priceM)}đ`,
                 `SIZE_${product.id}_M`
             ),
             Markup.button.callback(
-                `Size L - ${product.priceL}đ`,
+                `Size L - ${formatMoney(product.priceL)}đ`,
                 `SIZE_${product.id}_L`
             )
         ],
@@ -302,30 +304,7 @@ bot.action('FINAL_CHECKOUT', async ctx => {
     )
 })
 
-async function showQuantitySelector(ctx) {
-    const item = ctx.session.tempItem
 
-    await safeEdit(ctx,
-        `🧋 ${item.productName}
-Size: ${item.size}
-
-Chọn số lượng:
-Số lượng: ${item.quantity}`,
-        Markup.inlineKeyboard([
-            [
-                Markup.button.callback('➖', 'QTY_MINUS'),
-                Markup.button.callback(`${item.quantity}`, 'IGNORE'),
-                Markup.button.callback('➕', 'QTY_PLUS')
-            ],
-            [
-                Markup.button.callback('Thêm vào giỏ', 'ADD_TO_CART')
-            ],
-            [
-                Markup.button.callback('❌ Hủy', 'VIEW_MENU1')
-            ]
-        ])
-    )
-}
 
 
 module.exports = bot

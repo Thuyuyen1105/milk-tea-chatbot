@@ -2,6 +2,7 @@ const { Markup } = require('telegraf')
 const { Product, OrderItem, Order } = require('../models')
 const { showMenu } = require('./menu.handler')
 const { safeEdit } = require('../helpers/editMessage')
+const {formatMoney}= require('../helpers/formatMoney')
 
 async function showCart(ctx) {
     const order = await Order.findOne({
@@ -29,7 +30,7 @@ async function showCart(ctx) {
         const price = item.basePrice * item.quantity
         total += price
 
-        text += `${index + 1}. ${item.Product.name} (${item.size}) x${item.quantity} - ${price}đ\n`
+        text += `${index + 1}. ${item.Product.name} (${item.size}) x${item.quantity} - ${formatMoney(price)}đ\n`
 
         // 👉 Nút xoá từng sản phẩm
         buttons.push([
@@ -40,7 +41,7 @@ async function showCart(ctx) {
         ])
     })
 
-    text += `\nTổng: ${total}đ`
+    text += `\nTổng: ${formatMoney(total)}đ`
 
     // Nút cuối
     buttons.push(
