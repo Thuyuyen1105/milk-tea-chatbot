@@ -102,6 +102,7 @@
     "semver": "^7.7.4",
     "sequelize": "^6.37.7",
     "sequelize-pool": "^7.1.0",
+    "session": "^0.1.0",
     "set-blocking": "^2.0.0",
     "simple-concat": "^1.0.1",
     "simple-get": "^4.0.1",

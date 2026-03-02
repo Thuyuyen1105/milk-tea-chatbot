@@ -4,7 +4,7 @@ const { parse } = require('csv-parse')
 const { sequelize, Product } = require('../src/models')
 
 async function seed() {
-    await sequelize.sync()
+    await sequelize.sync({ force: true }) // reset DB cho sạch
 
     const records = []
 
@@ -21,7 +21,11 @@ async function seed() {
                     priceM: parseInt(row.price_m),
                     priceL: parseInt(row.price_l),
                     isTopping: row.category === 'Topping',
-                    available: row.available === 'TRUE',
+                    available:
+                        row.available
+                            ?.toString()
+                            .trim()
+                            .toLowerCase() === 'true',
                 })
             }
 

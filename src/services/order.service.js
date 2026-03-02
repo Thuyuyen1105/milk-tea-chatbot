@@ -2,12 +2,13 @@ const { Order, OrderItem, OrderItemTopping, Product } = require('../models')
 
 async function getOrCreateOrder(userId) {
     let order = await Order.findOne({
-        where: { telegramUserId: userId, status: 'PENDING' },
+        where: { telegramUserId: userId, status: 'CART' },
     })
 
     if (!order) {
         order = await Order.create({
             telegramUserId: userId,
+            status: 'CART',
         })
     }
 
